@@ -1,0 +1,104 @@
+import yfinance as yf
+import pandas as pd
+
+def get_stock_data(symbol, start_date, end_date):
+    try:
+        # Retrieve stock data from Yahoo Finance
+        stock_data = yf.download(symbol, start=start_date, end=end_date)
+        return stock_data
+    except Exception as e:
+        print(f"Error fetching data for {symbol}: {e}")
+        return None
+
+def preprocess_data(data):
+    if data is not None:
+        try:
+            # Reset index to make date a column for easier manipulation
+            data.reset_index(inplace=True)
+            return data
+        except Exception as e:
+            print(f"Error preprocessing data: {e}")
+    return None
+
+def compare_prices(data):
+    if data is not None:
+        try:
+            # Extract relevant columns
+            relevant_data = data[['Date', 'Close', 'High']]
+            
+            # Filter data to include only Fridays and Mondays
+            fridays = relevant_data[relevant_data['Date'].dt.dayofweek == 4]  # Friday: 4
+            mondays = relevant_data[relevant_data['Date'].dt.dayofweek == 0]  # Monday: 0
+            
+            # Initialize counters
+            total_fridays = len(fridays)
+            higher_mondays = 0
+            higher_mondays_with_higher_wednesdays = 0
+            
+            # Iterate through each Friday and corresponding Monday
+            for i in range(len(fridays)):
+                friday_close = fridays.iloc[i]['Close']
+                friday_date = fridays.iloc[i]['Date']
+                
+                # Find Monday's close price
+                monday_close = mondays[mondays['Date'] == (friday_date + pd.Timedelta(days=3))]['Close'].values
+                if len(monday_close) == 0:
+                    continue  # No Monday close found for this Friday
+                
+                monday_close = monday_close[0]
+                
+                if monday_close > friday_close:
+                    # Monday close price is higher
+                    higher_mondays += 1
+                    
+                    # Compare with Wednesday's close
+                    wednesday_close = data[data['Date'] == (friday_date + pd.Timedelta(days=5))]['Close'].values
+                    if len(wednesday_close) == 0:
+                        continue  # No Wednesday close found for this Friday
+                        
+                    wednesday_close = wednesday_close[0]
+                    
+                    if wednesday_close > monday_close:
+                        # Wednesday close price is also higher
+                        higher_mondays_with_higher_wednesdays += 1
+            
+            # Calculate percentages
+            percent_higher_mondays = (higher_mondays / total_fridays) * 100 if total_fridays != 0 else 0
+            percent_higher_mondays_with_higher_wednesdays = (higher_mondays_with_higher_wednesdays / higher_mondays) * 100 if higher_mondays != 0 else 0
+            
+            return percent_higher_mondays, percent_higher_mondays_with_higher_wednesdays
+        except Exception as e:
+            print(f"Error comparing prices: {e}")
+    return 0, 0
+
+def main():
+    # Define date range
+    start_date = '1980-01-01'
+    end_date = '2024-04-18'
+    
+    # Define stock symbol
+    symbol = 'AAPL'
+    
+    # Retrieve stock data
+    stock_data = get_stock_data(symbol, start_date, end_date)
+    
+    # Preprocess data
+    stock_data = preprocess_data(stock_data)
+    
+    # Compare prices
+    percent_higher_mondays, percent_higher_mondays_with_higher_wednesdays = compare_prices(stock_data)
+    
+    # Create a pandas DataFrame to store the results
+    results_df = pd.DataFrame({
+        'Metric': ['Percent Higher Mondays', 'Percent Higher Mondays with Higher Wednesdays'],
+        'Value': [percent_higher_mondays, percent_higher_mondays_with_higher_wednesdays]
+    })
+    
+    # Export the DataFrame to an Excel file
+    excel_filename = f"{symbol}_analysis.xlsx"
+    results_df.to_excel(excel_filename, index=False)
+    print(f"Data exported to {excel_filename}")
+
+if __name__ == "__main__":
+    main()
+
